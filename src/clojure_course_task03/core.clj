@@ -205,18 +205,27 @@
 ;; TBD: Implement the following macros
 ;;
 
+(def -user-tables (atom {}))
+
+(defn gen-group-name [name]
+  (symbol (str "-group-" name)))
+
+(defn gen-table-name [name]
+  (symbol (str "-table-" name)))
+
+(defn table-and-selector [name table]
+  (if (> (count table) 2)
+    (let [table-name (first table)
+          fields (first (rest (rest table)))
+          group-table-name (symbol (clojure.string/lower-case (str "-" name "-" table-name)))
+          fn-name (symbol (clojure.string/lower-case (str "select-" name "-" table-name)))]
+      `((swap! -user-tables assoc '~group-table-name '~fields)
+        (defn ~fn-name [] '(select '~table-name ~@fields))))
+    `()))
+
 (defmacro group [name & body]
-  ;; Пример
-  ;; (group Agent
-  ;;      proposal -> [person, phone, address, price]
-  ;;      agents -> [clients_id, proposal_id, agent])
-  ;; 1) Создает группу Agent
-  ;; 2) Запоминает, какие таблицы (и какие колонки в таблицах)
-  ;;    разрешены в данной группе.
-  ;; 3) Создает следующие функции
-  ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
-  ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
-  )
+  (let [to-run (mapcat #(table-and-selector name %) (partition 3 body))]
+    `(do ~@to-run)))
 
 (defmacro user [name & body]
   ;; Пример
