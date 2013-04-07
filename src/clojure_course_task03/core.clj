@@ -218,14 +218,18 @@
     (let [table-name (first table)
           fields (first (rest (rest table)))
           group-table-name (symbol (clojure.string/lower-case (str "-" name "-" table-name)))
-          fn-name (symbol (clojure.string/lower-case (str "select-" name "-" table-name)))]
+          fn-name (symbol (clojure.string/lower-case (str "select-" name "-" table-name)))
+          group-name (gen-group-name name)]
       `((swap! -user-tables assoc '~group-table-name '~fields)
-        (defn ~fn-name [] '(select '~table-name ~@fields))))
+        (defn ~fn-name [] '(select '~table-name ~@fields))
+        (swap! ~group-name conj '~group-table-name)))
     `()))
 
 (defmacro group [name & body]
-  (let [to-run (mapcat #(table-and-selector name %) (partition 3 body))]
-    `(do ~@to-run)))
+  (let [group-name (gen-group-name name)]
+    `(do
+       (def ~group-name (atom []))
+       ~@(mapcat #(table-and-selector name %) (partition 3 body)))))
 
 (defmacro user [name & body]
   ;; Пример
@@ -233,7 +237,17 @@
   ;;     (belongs-to Agent))
   ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
   ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
-  )
+  (let [group-name (->> (first body) (rest) (first) (gen-group-name))
+        table-to-user-var (fn [table-name fields]
+                            (let [src-table-name (-> (clojure.string/split (str table-name) #"-")
+                                                     (get 2))
+                                  user-var (symbol (str name "-" src-table-name "-fields-var"))
+                                  fields-keywords (vec (map keyword fields))]
+                              `(def ~user-var ~fields-keywords)))
+        tables (map #(vector % (get @-user-tables %)) 
+                    @(eval group-name)) ; try to get rid of eval 
+        ]
+    `(do ~@(map #(apply table-to-user-var %) tables))))
 
 (defmacro with-user [name & body]
   ;; Пример
