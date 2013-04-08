@@ -1,5 +1,6 @@
 (ns clojure-course-task03.core
-  (:require [clojure.set]))
+  (:require [clojure.set])
+  (:require [clojure.string :as clj-str]))
 
 (defn join* [table-name conds]
   (let [op (first conds)
@@ -231,6 +232,8 @@
        (def ~group-name (atom []))
        ~@(mapcat #(table-and-selector name %) (partition 3 body)))))
 
+(def ^:dynamic *user-tables-vars* (atom []))
+
 (defmacro user [name & body]
   ;; Пример
   ;; (user Ivanov
@@ -243,11 +246,12 @@
                                                      (get 2))
                                   user-var (symbol (str name "-" src-table-name "-fields-var"))
                                   fields-keywords (vec (map keyword fields))]
-                              `(def ~user-var ~fields-keywords)))
+                              `((def ~user-var ~fields-keywords)
+                                (swap! *user-tables-vars* conj '~user-var))))
         tables (map #(vector % (get @-user-tables %)) 
                     @(eval group-name)) ; try to get rid of eval 
         ]
-    `(do ~@(map #(apply table-to-user-var %) tables))))
+    `(do ~@(mapcat #(apply table-to-user-var %) tables))))
 
 (defmacro with-user [name & body]
   ;; Пример
@@ -259,4 +263,14 @@
   ;;    proposal-fields-var и agents-fields-var.
   ;;    Таким образом, функция select, вызванная внутри with-user, получает
   ;;    доступ ко всем необходимым переменным вида <table-name>-fields-var.
-  )
+  (let [user-name (str name)
+        user-vars (filter #(= (first (clj-str/split (str %) #"-")) (str name)) @*user-tables-vars*)
+        make-local-var (fn [var]
+                         (let [local-var (->> (clj-str/split (str var) #"-")
+                                              (rest)
+                                              (clj-str/join "-")
+                                              (symbol))
+                               local-fields (eval var)]
+                           `(~local-var ~local-fields)))]
+    `(let [~@(mapcat make-local-var user-vars)]
+       (do ~@body))))
