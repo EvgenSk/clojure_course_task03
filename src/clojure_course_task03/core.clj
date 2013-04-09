@@ -217,12 +217,19 @@
 (defn table-and-selector [name table]
   (if (> (count table) 2)
     (let [table-name (first table)
-          fields (first (rest (rest table)))
+          table-fields (first (rest (rest table)))
+          fields-str (if (some #(= % :all) table)
+                       "*" 
+                       (clj-str/join "," (map #(str %) table-fields)))
           group-table-name (symbol (clojure.string/lower-case (str "-" name "-" table-name)))
           fn-name (symbol (clojure.string/lower-case (str "select-" name "-" table-name)))
-          group-name (gen-group-name name)]
+          group-name (gen-group-name name)
+          fields (if (some #(= % :all) table-fields)
+                   [:all]
+                   (map keyword table-fields))
+          ]
       `((swap! -user-tables assoc '~group-table-name '~fields)
-        (defn ~fn-name [] '(select '~table-name ~@fields))
+        (defn ~fn-name [] (str "SELECT " ~fields-str " FROM " '~table-name " "))
         (swap! ~group-name conj '~group-table-name)))
     `()))
 
